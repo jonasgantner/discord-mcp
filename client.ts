@@ -10,6 +10,7 @@ import {
   type Guild,
   type GuildMember,
 } from 'discord.js'
+import { resolveGuildId } from './config.js'
 
 export const client = new Client({
   intents: [
@@ -27,14 +28,8 @@ export const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 })
 
-export function resolveGuild(guildId?: string): string {
-  const id = guildId || process.env.DISCORD_GUILD_ID
-  if (!id) throw new Error('guildId required (not provided and DISCORD_GUILD_ID not set)')
-  return id
-}
-
 export async function fetchGuild(guildId?: string): Promise<Guild> {
-  return client.guilds.fetch(resolveGuild(guildId))
+  return client.guilds.fetch(resolveGuildId(guildId))
 }
 
 export type SendableChannel = TextChannel | DMChannel | NewsChannel | ThreadChannel

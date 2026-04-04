@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { client } from './client.js'
 import { registerTools } from './tools/registry.js'
+import { loadConfig } from './config.js'
 
 // Global error handlers — log and keep serving, never crash silently.
 process.on('unhandledRejection', err => {
@@ -11,11 +12,7 @@ process.on('uncaughtException', err => {
   process.stderr.write(`discord-mcp: uncaught exception: ${err}\n`)
 })
 
-const TOKEN = process.env.DISCORD_TOKEN
-if (!TOKEN) {
-  process.stderr.write('discord-mcp: DISCORD_TOKEN not set\n')
-  process.exit(1)
-}
+const config = loadConfig()
 
 // MCP server
 const server = new Server(
@@ -35,7 +32,7 @@ function shutdown(): void {
   shuttingDown = true
   process.stderr.write('discord-mcp: shutting down\n')
   setTimeout(() => process.exit(0), 2000)
-  void Promise.resolve(client.destroy()).finally(() => process.exit(0))
+  void Promise.all([server.close(), client.destroy()]).finally(() => process.exit(0))
 }
 process.stdin.on('end', shutdown)
 process.stdin.on('close', shutdown)
@@ -51,4 +48,18 @@ client.once('ready', c => {
   process.stderr.write(`discord-mcp: connected as ${c.user.tag}\n`)
 })
 
-await client.login(TOKEN)
+// PPID watchdog: independent process that kills us if parent dies.
+import { spawn } from 'child_process'
+const wd = spawn('bash', ['-c', `
+  while true; do
+    sleep 5
+    PPID_NOW=$(ps -o ppid= -p $PPID 2>/dev/null | tr -d ' ')
+    if [ -z "$PPID_NOW" ] || [ "$PPID_NOW" = "1" ]; then
+      kill -9 $PPID 2>/dev/null
+      exit 0
+    fi
+  done
+`], { detached: true, stdio: 'ignore' })
+wd.unref()
+
+await client.login(config.token)
